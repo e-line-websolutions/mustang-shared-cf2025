@@ -394,7 +394,7 @@
   }
 
   public string function fixPathInfo( string pathInfo = cgi.path_info ) {
-    return replace( pathInfo, "index.cfm", "", "one" );
+    return replace( pathInfo, "index.cfm", "", "one" ).listFirst('?');
   }
 
   public string function cleanPath( input, boolean addTrailingSlash = true ) {

@@ -29,6 +29,7 @@ component extends="framework.one" {
   variables.routes = [];
   variables.mstng.mergeStructs(
     {
+      'baseURL': 'https://' & cgi.server_name,
       'routesCaseSensitive' = false,
       'generateSES' = true,
       'SESOmitIndex' = true,

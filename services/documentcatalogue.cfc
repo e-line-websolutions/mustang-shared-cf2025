@@ -38,7 +38,7 @@ component accessors=true {
     return callDocDb( argumentCollection = arguments );
   }
 
-  public array function searchDocuments( required string whereConfig ) {
+  public array function searchDocuments( required array whereConfig ) {
     return callDocDb( argumentCollection = arguments );
   }
 
@@ -108,8 +108,8 @@ component accessors=true {
 
   public struct function updateDocument( required numeric documentId, required struct formData ) {
     var docdb = { };
-    var input = arguments;
-    include "/mustang/lib/webmanager/modules/documentcatalogue/docdb_load_documents.cfm";
+    var input = duplicate( arguments );
+    include "/mustang/lib/webmanager/modules/documentcatalogue/docdb_update_document.cfm";
     return input;
   }
 

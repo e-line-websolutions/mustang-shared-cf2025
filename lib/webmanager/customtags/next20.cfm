@@ -16,14 +16,23 @@
     attributes.nCurrentPage = 1;
   }
 
+  if( not isNumeric( attributes.nResultsPerPage ) or attributes.nResultsPerPage lte 0 )
+  {
+    attributes.nResultsPerPage = 20;
+  }
+  else
+  {
+    attributes.nResultsPerPage = int( attributes.nResultsPerPage );
+  }
+
   /* Return variables */
   if( not isDefined( "attributes.sReturnTotalRecordCount" ))    { attributes.sReturnTotalRecordCount    = "nTotalRecordCount"; }
   if( not isDefined( "attributes.sReturnCurrentRecordCount" ))  { attributes.sReturnCurrentRecordCount  = "nCurrentRecordCount"; }
   if( not isDefined( "attributes.sReturnTotalPageCount" ))      { attributes.sReturnTotalPageCount      = "nTotalPageCount"; }
   if( not isDefined( "attributes.sReturnExecutionTime" ))       { attributes.sReturnExecutionTime       = "nExecutionTime"; }
-
-  sIndexQueryName = "nxt20" & hash( cgi.remote_addr & cgi.remote_host & attributes.sIndexQuery );
-  reload = false;
+  nTotalRecordCount = 0;
+  nTotalPageCount = 0;
+  nOffsetRows = 0;
 </cfscript>
 
 <!--- [rvl] //
@@ -38,107 +47,45 @@
   <cfthrow message="no index and/or select query specified" />
 </cfif>
 
-<!--- [rvl] //
-            // We will rerun the query to collect the data if:
-            //
-            //  1.  The index query is not present in the session scope (first
-            //      time hit usually, or
-            //  2.  We explicitly want to rerun the query to refresh the data.
-            //      this can be caused by setting the recycle variable to true
-            //
+<!---
+  Stateless pagination for SQL Server:
+  1) count rows using sIndexQuery
+  2) fetch page using ORDER BY + OFFSET/FETCH
 --->
-<cflock timeout="5" type="readOnly" scope="session">
-  <cfif not structKeyExists( session, "next20" ) or
-        not structKeyExists( session.next20, "query" ) or
-        not structKeyExists( session.next20.query, sIndexQueryName ) or
-        (
-          structKeyExists( caller.attributes, "bRecycle" ) and
-          caller.attributes.bRecycle
-        )
-  >
-    <cfset reload = true />
-  <cfelse>
-    <cfset next20 = duplicate( session.next20 ) />
-    <cfset aID = duplicate( session.next20.query[sIndexQueryName] ) />
-  </cfif>
-</cflock>
-
-<cfif reload>
-  <cfquery datasource="#request.db.s_DSN#" name="#sIndexQueryName#" blockfactor="100">
-    SELECT #attributes.sIDColumn# AS id #preserveSingleQuotes( attributes.sIndexQuery )#
-    <cfif structKeyExists( attributes, "xOrderByClause" ) and
-          isArray( attributes.xOrderByClause ) and
-          arrayLen( attributes.xOrderByClause )>
-      ORDER BY
-      <cfloop from="1" to="#arrayLen( attributes.xOrderByClause )#" index="i">
-        #attributes.xOrderByClause[i][1]# #iif( attributes.xOrderByClause[i][2], de( "ASC" ), de( "DESC" ))#
-        <cfif i neq arrayLen( attributes.xOrderByClause )>,</cfif>
-      </cfloop>
-    </cfif>
-  </cfquery>
-
-  <cfscript>
-    /*
-     * What we'll do here:
-     *
-     *  [1] Clear the 'previous' or 'older' next20 session indexing array.
-     *      This way, we won't end up polluting the session scope with
-     *      unneeded indexing arrays.
-     *  [2] Store the count of records in a returning variable. This is for
-     *      displaying (the total amount of) results
-     *  [3] Lastly, make an array of all the id's that we can use later on for
-     *      selecting the data we actually need right here.
-     */
-    next20 = {};
-    next20.nRecordCount = variables[sIndexQueryName].recordCount;
-
-    nTmpPageIndex = 1;
-    lTmpID        = "";
-    aID           = [request.site.n_NOT_SET];
-
-    for(  i = 1;
-          i lte variables[sIndexQueryName].recordCount;
-          i++ )
-    {
-      lTmpID = listAppend( lTmpID, variables[sIndexQueryName].id[i] );
-
-      if(
-          (
-            i mod attributes.nResultsPerPage eq 0
-          ) or
-          (
-            i eq variables[sIndexQueryName].recordCount
-          )
-      ){
-        aID[nTmpPageIndex] = lTmpID;
-        lTmpID = "";
-        nTmpPageIndex++;
-      }
-    }
-
-    next20.query[sIndexQueryName] = duplicate( aID );
-  </cfscript>
-</cfif>
+<cfquery datasource="#request.db.s_DSN#" name="qry_next20_count" blockfactor="100">
+  SELECT COUNT_BIG( 1 ) AS totalRecordCount
+  #preserveSingleQuotes( attributes.sIndexQuery )#
+</cfquery>
 
 <cfscript>
-  if( attributes.nCurrentPage gt arrayLen( aID ) and
-      arrayLen( aID ) gt 0 )
+  if( qry_next20_count.recordCount and isNumeric( qry_next20_count.totalRecordCount[ 1 ] ) )
   {
-    attributes.nCurrentPage = arrayLen( aID );
+    nTotalRecordCount = val( qry_next20_count.totalRecordCount[ 1 ] );
   }
 
-  // caller.docdb.nCurrentPage = attributes.nCurrentPage;
+  if( nTotalRecordCount gt 0 )
+  {
+    nTotalPageCount = ceiling( nTotalRecordCount / attributes.nResultsPerPage );
+  }
+
+  if( nTotalPageCount lte 0 )
+  {
+    attributes.nCurrentPage = 1;
+    nOffsetRows = 0;
+  }
+  else
+  {
+    if( attributes.nCurrentPage gt nTotalPageCount )
+    {
+      attributes.nCurrentPage = nTotalPageCount;
+    }
+    nOffsetRows = ( attributes.nCurrentPage - 1 ) * attributes.nResultsPerPage;
+  }
 </cfscript>
 
-<!--- [rvl] Do the actual select query --->
-<cfquery datasource="#request.db.s_DSN#" name="caller.#attributes.sQueryName#" blockfactor="#attributes.nResultsPerPage#">
+<!--- [rvl] Do the actual select query (MS SQL Server OFFSET/FETCH) --->
+<cfquery datasource="#request.db.s_DSN#" name="_tmp_query" blockfactor="#attributes.nResultsPerPage#">
   #preserveSingleQuotes( attributes.sSelectQuery )#
-
-  <cfif listLen( aID[attributes.nCurrentPage] ) eq 1>
-    AND #attributes.sIDColumn# = <cfqueryparam value="#aID[attributes.nCurrentPage]#" cfsqltype="cf_sql_integer">
-  <cfelseif listLen( aID[attributes.nCurrentPage] ) gt 1>
-    AND #attributes.sIDColumn# IN ( #listSort( aID[attributes.nCurrentPage], 'numeric' )# )
-  </cfif>
 
   <cfif structKeyExists( attributes, "xOrderByClause" ) and
         isArray( attributes.xOrderByClause ) and
@@ -148,7 +95,12 @@
       #attributes.xOrderByClause[i][1]# #iif( attributes.xOrderByClause[i][2], de( "ASC" ), de( "DESC" ))#
       <cfif i neq arrayLen( attributes.xOrderByClause )>,</cfif>
     </cfloop>
+  <cfelse>
+    ORDER BY #attributes.sIDColumn# ASC
   </cfif>
+
+  OFFSET <cfqueryparam value="#nOffsetRows#" cfsqltype="cf_sql_integer"> ROWS
+  FETCH NEXT <cfqueryparam value="#attributes.nResultsPerPage#" cfsqltype="cf_sql_integer"> ROWS ONLY
 </cfquery>
 
 <cfscript>
@@ -157,10 +109,11 @@
    * we have found here. This can be used by a navigation system to accompany
    * the retrieved data with some information about the query.
    */
-  "caller.#attributes.sReturnTotalRecordCount#"   = duplicate( next20.nRecordCount );
-  "caller.#attributes.sReturnCurrentRecordCount#" = listLen( aID[attributes.nCurrentPage] );
-  "caller.#attributes.sReturnTotalPageCount#"     = arrayLen( aID );
-  "caller.#attributes.sReturnExecutionTime#"      = cfquery.executionTime;
+  "caller.#attributes.sQueryName#"                 = _tmp_query;
+  "caller.#attributes.sReturnTotalRecordCount#"    = nTotalRecordCount;
+  "caller.#attributes.sReturnCurrentRecordCount#"  = _tmp_query.recordCount;
+  "caller.#attributes.sReturnTotalPageCount#"      = nTotalPageCount;
+  "caller.#attributes.sReturnExecutionTime#"       = cfquery.executionTime;
 </cfscript>
 
 <cfsetting enablecfoutputonly="No">

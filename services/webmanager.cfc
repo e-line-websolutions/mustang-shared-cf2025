@@ -626,7 +626,7 @@ component accessors=true {
             }
 
             //  Working link
-            if ( testLink.responseheader.location.trim().len() ) {
+            if ( testLink.responseheader.keyExists( 'location' ) && testLink.responseheader.location.trim().len() ) {
               link.withThis = testLink.responseheader.location
                 .replace( '_', '-', 'all' )
                 .replace( '/#defaultLanguage#/', '/' );
