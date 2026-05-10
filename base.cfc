@@ -211,7 +211,7 @@ component {
       if ( server.keyExists( "lucee" ) ) {
         try {
           cfcontent( reset = true );
-          cfheader( statusCode = exception.errorCode, statusText = exception.type & 'Error' );
+          cfheader( statusCode = exception.errorCode );
         } catch ( any e ) {
           writeDump(exception);
           writeDump(e);abort;
