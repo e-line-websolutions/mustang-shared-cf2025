@@ -1,19 +1,6 @@
-component extends="com.adobe.coldfusion.base" {
-  public function cacheScriptObjects( ) {
-    var tags = [
-      "CFFTP",
-      "CFHTTP",
-      "CFMAIL",
-      "CFPDF",
-      "CFQUERY",
-      "CFPOP",
-      "CFIMAP",
-      "CFFEED",
-      "CFLDAP"
-    ];
-
-    for( var tag in tags ) {
-      getSupportedTagAttributes( tag );
-    }
+component {
+  public function cacheScriptObjects() {
+    // Obsolete pre-2018 ACF thread-safety workaround.
+    // com.adobe.coldfusion.base no longer ships with ACF 2025.
   }
 }
