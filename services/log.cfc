@@ -47,7 +47,7 @@ component accessors=true {
     var levelThreshold = arrayFindNoCase( this.logLevels, variables.config.logLevel );
 
     if ( requestedLevel >= levelThreshold ) {
-      writeLog( text = text, type = mapLevelToCfType( level ), file = file );
+      writeLog( text = text, type = mapLevelToCfType( level ), file = arguments.file );
       systemOutput( text, true, requestedLevel > 3 );
       return true;
     }
